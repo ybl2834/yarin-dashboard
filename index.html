@@ -101,7 +101,7 @@
         <div class="login-box">
             <h1><i class="fas fa-shield-alt"></i> מרכז הבקרה</h1>
             <p style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 30px;">התחברות מאובטחת</p>
-            <button class="google-btn" id="btn-login"><img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google"> כניסה וחיבור ליומן</button>
+            <button class="google-btn" id="btn-login"><img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google"> כניסה עם Google</button>
         </div>
     </div>
 
@@ -252,7 +252,6 @@
             try {
                 const res = await fetch(`https://www.hebcal.com/converter?cfg=json&gy=${now.getFullYear()}&gm=${now.getMonth()+1}&gd=${now.getDate()}&g2h=1`);
                 const data = await res.json();
-                // מנקה את סימני הניקוד כדי שייראה חלק ויפה
                 const cleanHebrew = data.hebrew.replace(/[\u0591-\u05C7]/g, '');
                 document.getElementById('hebrew-date').innerText = cleanHebrew;
             } catch(e) {}
@@ -293,32 +292,44 @@
         const db = getFirestore(app);
         const swalConfig = { background: '#1e1e24', color: '#e0e0e0', confirmButtonColor: '#ffd700', cancelButtonColor: '#e74c3c', confirmButtonText: 'שמור', cancelButtonText: 'ביטול' };
 
-        provider.addScope('https://www.googleapis.com/auth/calendar.events.readonly');
-        
-        // השורה שנוספה - מכריחה את גוגל להקפיץ תמיד את חלון האישורים
-        provider.setCustomParameters({ prompt: 'consent' });
-
+        // התחברות ראשית למערכת (שומרת מפתח ב-localStorage לזיכרון תמידי)
         document.getElementById("btn-login").addEventListener("click", () => {
             signInWithPopup(auth, provider).then((result) => {
-                sessionStorage.setItem('googleAccessToken', GoogleAuthProvider.credentialFromResult(result).accessToken);
+                const credential = GoogleAuthProvider.credentialFromResult(result);
+                if(credential && credential.accessToken) {
+                    localStorage.setItem('googleAccessToken', credential.accessToken);
+                }
                 window.location.reload();
             }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה', text: error.message}));
         });
 
-        // טיפול בהתנתקות משני הכפתורים (בסרגל העליון ובתפריט הצד)
+        // חיבור ספציפי ליומן (נשק יום הדין)
+        window.connectCalendarSpecific = function() {
+            const calProvider = new GoogleAuthProvider();
+            calProvider.addScope('https://www.googleapis.com/auth/calendar.events.readonly');
+            calProvider.setCustomParameters({ prompt: 'consent' });
+            
+            signInWithPopup(auth, calProvider).then((result) => {
+                const credential = GoogleAuthProvider.credentialFromResult(result);
+                if(credential && credential.accessToken) {
+                    localStorage.setItem('googleAccessToken', credential.accessToken);
+                    Swal.fire({...swalConfig, icon: 'success', title: 'היומן חובר בהצלחה!', timer: 1500, showConfirmButton: false});
+                    window.fetchCalendarEvents();
+                }
+            }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה', text: error.message}));
+        };
+
         const handleLogout = () => {
             Swal.fire({...swalConfig, title: 'להתנתק מהמערכת?', showCancelButton: true}).then((result) => {
-                if (result.isConfirmed) { sessionStorage.removeItem('googleAccessToken'); signOut(auth); }
+                if (result.isConfirmed) { localStorage.removeItem('googleAccessToken'); signOut(auth); }
             });
         };
         document.getElementById("btn-logout-nav").addEventListener("click", handleLogout);
         document.getElementById("btn-logout-sidebar").addEventListener("click", handleLogout);
 
-        // פונקציה לטעינה מחודשת של כל הנתונים ללא רענון עמוד
         window.refreshData = function() {
             loadCollection('goals', 'goals-list', (d, i) => `<span><input type="checkbox" style="accent-color: var(--accent-gold); transform: scale(1.2); margin-left: 10px;"> ${d.title}</span> <i class="fas fa-trash icon-btn delete-icon" onclick="deleteItem('goals', '${i}')"></i>`);
             
-            // תצוגת הקורסים החדשה - קובייה לכל קורס שלחיצה עליה מעבירה למסך הקורס
             loadCollection('courses', 'courses-list', (d, i) => `
                 <div style="flex-grow: 1; cursor: pointer; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 15px; border-right: 3px solid var(--accent-gold); display: flex; justify-content: space-between; align-items: center;" onclick="openCourseScreen('${i}', '${d.name}', '${d.nextClass || ''}', '${d.nextTask || ''}')">
                     <div>
@@ -328,9 +339,7 @@
                             <small style="color:var(--text-light); display:block;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i> משימה קרובה: ${d.nextTask || "לא הוזן"}</small>
                         </div>
                     </div>
-                    <div>
-                        <i class="fas fa-chevron-left" style="color: var(--text-muted); font-size: 1.5rem; margin-left: 15px;"></i>
-                    </div>
+                    <div><i class="fas fa-chevron-left" style="color: var(--text-muted); font-size: 1.5rem; margin-left: 15px;"></i></div>
                 </div>
                 <div style="text-align: left; margin-top: -10px; margin-bottom: 20px;">
                     <span style="font-size: 0.8rem; color: var(--danger); cursor: pointer; text-decoration: underline;" onclick="deleteItem('courses', '${i}')">מחק קורס</span>
@@ -355,20 +364,15 @@
             }
         });
 
-        // --- ניהול מסך קורס אישי ---
+        // ניהול קורסים
         let currentCourseId = null;
-
         window.openCourseScreen = async function(id, name, nextClass, nextTask) {
             currentCourseId = id;
             document.getElementById('current-course-title').innerText = name;
             document.getElementById('cv-next-class').innerText = nextClass || 'לא הוזן';
             document.getElementById('cv-next-task').innerText = nextTask || 'לא הוזן';
-
-            // שולף את הסיכומים הקיימים אם יש
             const docSnap = await getDoc(doc(db, "courses", id));
             document.getElementById('cv-notes').value = (docSnap.exists() && docSnap.data().notes) ? docSnap.data().notes : "";
-
-            // מחליף את המסך למסך הקורס
             showSection('course-view');
         };
 
@@ -385,33 +389,31 @@
             const currentTask = document.getElementById('cv-next-task').innerText;
 
             const { value: v } = await Swal.fire({
-                ...swalConfig,
-                title: 'עריכת משימה ושיעור',
+                ...swalConfig, title: 'עריכת משימה ושיעור',
                 html: `<input id="swal-edit-c1" class="swal2-input" placeholder="שיעור קרוב (לדוגמה: מחר ב-18:00)" value="${currentClass !== 'לא הוזן' ? currentClass : ''}">
                        <input id="swal-edit-c2" class="swal2-input" placeholder="משימה קרובה (לדוגמה: ממן 11)" value="${currentTask !== 'לא הוזן' ? currentTask : ''}">`,
-                showCancelButton: true,
-                preConfirm: () => [document.getElementById('swal-edit-c1').value, document.getElementById('swal-edit-c2').value]
+                showCancelButton: true, preConfirm: () => [document.getElementById('swal-edit-c1').value, document.getElementById('swal-edit-c2').value]
             });
 
             if(v) {
                 await setDoc(doc(db, "courses", currentCourseId), { nextClass: v[0], nextTask: v[1] }, { merge: true });
                 document.getElementById('cv-next-class').innerText = v[0] || 'לא הוזן';
                 document.getElementById('cv-next-task').innerText = v[1] || 'לא הוזן';
-                window.refreshData(); // מרענן כדי שהמסך הראשי יתעדכן גם
+                window.refreshData(); 
             }
         };
 
-        // --- יומן גוגל (אירועים גדולים, שבועי וחודשי) ---
+        // יומן גוגל
         const bigEventKeywords = ['טיסה', 'חופשה', 'מבחן', 'טקס', 'חג', 'גאורגיה', 'אילת', 'חול', 'חו"ל'];
         let allCalendarEvents = []; 
 
         window.fetchCalendarEvents = async function() {
-            const token = sessionStorage.getItem('googleAccessToken');
+            const token = localStorage.getItem('googleAccessToken'); // השתנה ל-localStorage
             const weeklyContainer = document.getElementById('weekly-events-container');
             const bigEventsContainer = document.getElementById('big-events-container');
             
             if (!token) { 
-                weeklyContainer.innerHTML = '<p style="text-align:center;">נדרשת התחברות ליומן</p>'; 
+                weeklyContainer.innerHTML = '<p style="text-align:center; margin-bottom: 20px;">המערכת צריכה אישור כדי לקרוא את היומן שלך.</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל</button>'; 
                 return; 
             }
 
@@ -422,7 +424,7 @@
                 const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${futureDate.toISOString()}&singleEvents=true&orderBy=startTime`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) {
                     if (response.status === 401 || response.status === 403) {
-                        weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger);">החיבור ליומן נכשל. לחץ על כפתור ההתנתקות והתחבר שוב.</p>';
+                        weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger); margin-bottom: 20px;">פג תוקף החיבור ליומן (מטעמי אבטחה של גוגל).</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> התחבר ליומן מחדש</button>';
                         return;
                     }
                     throw new Error('שגיאה בשליפת יומן');
@@ -430,7 +432,6 @@
                 const events = (await response.json()).items;
                 allCalendarEvents = events || [];
 
-                // 1. מיון אירועים גדולים
                 const bigEvents = allCalendarEvents.filter(e => {
                     const title = (e.summary || '').toLowerCase();
                     return bigEventKeywords.some(keyword => title.includes(keyword));
@@ -456,7 +457,6 @@
                     bigEventsContainer.style.display = 'none';
                 }
 
-                // 2. הלו"ז השבועי
                 const nextWeek = new Date(); nextWeek.setDate(now.getDate() + 7);
                 const weeklyEvents = allCalendarEvents.filter(e => {
                     const eventDate = new Date(e.start.dateTime || e.start.date);
@@ -474,11 +474,10 @@
                     });
                 }
 
-                // 3. לוח חודשי
                 buildMonthlyCalendar(now.getFullYear(), now.getMonth(), allCalendarEvents);
 
             } catch (error) { 
-                weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger);">לא הצלחנו לטעון את היומן.</p>'; 
+                weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger); margin-bottom: 20px;">שגיאה בטעינת היומן. נסה להתחבר מחדש.</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל</button>'; 
             }
         };
 
@@ -535,11 +534,7 @@
             html += `</div>`;
 
             Swal.fire({
-                ...swalConfig,
-                title: `${day} ב${monthName}`,
-                html: html,
-                showConfirmButton: true,
-                confirmButtonText: 'סגור'
+                ...swalConfig, title: `${day} ב${monthName}`, html: html, showConfirmButton: true, confirmButtonText: 'סגור'
             });
         }
 
@@ -558,21 +553,15 @@
         };
 
         document.getElementById('btn-add-goal').onclick = async () => { const { value: t } = await Swal.fire({...swalConfig, title: 'מטרה חדשה', input: 'text', showCancelButton: true}); if(t){ await addDoc(collection(db, "goals"), {title: t}); window.refreshData(); } };
-        
         async function askTwoInputs(t, p1, p2) { const { value: v } = await Swal.fire({ ...swalConfig, title: t, html: `<input id="swal-in1" class="swal2-input" placeholder="${p1}"><input id="swal-in2" class="swal2-input" placeholder="${p2}">`, showCancelButton: true, preConfirm: () => [document.getElementById('swal-in1').value, document.getElementById('swal-in2').value] }); return v; }
         
         document.getElementById('btn-add-course').onclick = async () => { 
             const { value: v } = await Swal.fire({ 
-                ...swalConfig, 
-                title: 'הוספת קורס חדש', 
+                ...swalConfig, title: 'הוספת קורס חדש', 
                 html: `<input id="swal-c1" class="swal2-input" placeholder="שם הקורס (לדוגמה: כלכלה)"><input id="swal-c2" class="swal2-input" placeholder="שיעור קרוב (לדוגמה: יום ג' 18:00)"><input id="swal-c3" class="swal2-input" placeholder="משימה קרובה (לדוגמה: ממן 11 ב-15.4)">`, 
-                showCancelButton: true, 
-                preConfirm: () => [document.getElementById('swal-c1').value, document.getElementById('swal-c2').value, document.getElementById('swal-c3').value] 
+                showCancelButton: true, preConfirm: () => [document.getElementById('swal-c1').value, document.getElementById('swal-c2').value, document.getElementById('swal-c3').value] 
             }); 
-            if(v && v[0]){ 
-                await addDoc(collection(db, "courses"), {name: v[0], nextClass: v[1], nextTask: v[2], notes: ""}); 
-                window.refreshData(); 
-            } 
+            if(v && v[0]){ await addDoc(collection(db, "courses"), {name: v[0], nextClass: v[1], nextTask: v[2], notes: ""}); window.refreshData(); } 
         };
 
         document.getElementById('btn-add-workout').onclick = async () => { const v = await askTwoInputs('שיא', 'תרגיל', 'משקל'); if(v&&v[0]){ await addDoc(collection(db, "workouts"), {exercise: v[0], weight: v[1]}); window.refreshData(); } };
