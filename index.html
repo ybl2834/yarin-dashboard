@@ -27,6 +27,9 @@
         .navbar { background: rgba(30, 30, 36, 0.95); backdrop-filter: blur(5px); padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid rgba(255,215,0,0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .hamburger { font-size: 24px; cursor: pointer; color: var(--accent-gold); transition: 0.2s; }
         .hamburger:hover { transform: scale(1.1); }
+        .nav-actions { display: flex; gap: 20px; align-items: center; }
+        #btn-logout-nav { cursor: pointer; color: var(--danger); font-size: 1.2rem; transition: 0.2s; }
+        #btn-logout-nav:hover { transform: scale(1.1); text-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
         #clock-container { text-align: center; }
         #clock { font-size: 0.95rem; direction: ltr; color: var(--text-muted); font-weight: 500; }
         #hebrew-date { font-size: 0.85rem; color: var(--accent-gold); font-weight: bold; margin-top: 2px; }
@@ -104,7 +107,10 @@
 
     <div id="app-container">
         <div class="navbar">
-            <div class="hamburger" onclick="toggleSidebar()"><i class="fas fa-bars"></i></div>
+            <div class="nav-actions">
+                <div class="hamburger" onclick="toggleSidebar()"><i class="fas fa-bars"></i></div>
+                <div id="btn-logout-nav" title="התנתק מהמערכת"><i class="fas fa-power-off"></i></div>
+            </div>
             <div id="user-greeting" style="font-weight: bold; color: var(--text-light); font-size: 1.1rem;"></div>
             <div id="clock-container">
                 <div id="clock"></div>
@@ -122,7 +128,7 @@
             <a href="#" onclick="showSection('goals', this)"><i class="fas fa-bullseye"></i> מטרות</a>
             <a href="#" onclick="showSection('relationships', this)"><i class="fas fa-heart"></i> קשרים (CRM)</a>
             <div style="margin-top: auto; border-top: 1px solid #333; padding-bottom: 20px;">
-                <a href="#" id="btn-logout" style="color: var(--danger);"><i class="fas fa-sign-out-alt" style="color: var(--danger);"></i> התנתק מהמערכת</a>
+                <a href="#" id="btn-logout-sidebar" style="color: var(--danger);"><i class="fas fa-sign-out-alt" style="color: var(--danger);"></i> התנתק מהמערכת</a>
             </div>
         </div>
 
@@ -156,7 +162,7 @@
                     <div class="calendar-grid">
                         <div class="calendar-day-name">א'</div><div class="calendar-day-name">ב'</div><div class="calendar-day-name">ג'</div>
                         <div class="calendar-day-name">ד'</div><div class="calendar-day-name">ה'</div><div class="calendar-day-name">ו'</div><div class="calendar-day-name">ש'</div>
-                        </div>
+                    </div>
                     <div id="monthly-calendar-days" class="calendar-grid"></div>
                 </div>
             </div>
@@ -166,6 +172,27 @@
                 <div class="card">
                     <div id="courses-list"><p style="text-align:center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> טוען קורסים...</p></div>
                     <button class="action-btn" style="margin-top: 25px;" id="btn-add-course"><i class="fas fa-plus"></i> הוסף קורס חדש</button>
+                </div>
+            </div>
+
+            <div id="course-view" class="section">
+                <button class="action-btn" style="width: auto; margin-bottom: 20px; background: transparent; border: 1px solid #444; color: var(--text-light);" onclick="showSection('studies')">
+                    <i class="fas fa-arrow-right"></i> חזור לרשימת הקורסים
+                </button>
+                <h2 id="current-course-title" style="color: var(--accent-gold); font-size: 2.2rem; margin-top: 0;">שם הקורס</h2>
+
+                <div class="grid-container">
+                    <div class="card" style="height: fit-content;">
+                        <h3><i class="fas fa-tasks"></i> מטלות ושיעורים</h3>
+                        <div class="list-item"><span>שיעור קרוב:</span> <strong id="cv-next-class"></strong></div>
+                        <div class="list-item"><span>משימה קרובה:</span> <strong id="cv-next-task" style="color: var(--danger);"></strong></div>
+                        <button class="action-btn" onclick="editCourseDetails()"><i class="fas fa-pen"></i> ערוך משימה/שיעור</button>
+                    </div>
+                    <div class="card">
+                        <h3><i class="fas fa-book-open"></i> מחברת קורס וסיכומים</h3>
+                        <textarea id="cv-notes" style="width: 100%; height: 250px; background: rgba(0,0,0,0.2); color: var(--text-light); border: 1px solid #444; border-radius: 8px; padding: 15px; font-family: inherit; font-size: 1rem; resize: vertical;" placeholder="הקלד כאן סיכומים, קישורים לזום או חומר למבחן..."></textarea>
+                        <button class="action-btn" onclick="saveCourseNotes()"><i class="fas fa-save"></i> שמור סיכומים למחברת</button>
+                    </div>
                 </div>
             </div>
 
@@ -216,21 +243,30 @@
         function updateClock() { 
             const now = new Date(); 
             document.getElementById('clock').innerHTML = '<span style="color: var(--accent-gold)">' + now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) + '</span> | ' + now.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: 'long' }); 
-            
-            // חישוב תאריך עברי
-            try {
-                const hebrewDateStr = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {day: 'numeric', month: 'long', year: 'numeric'}).format(now);
-                document.getElementById('hebrew-date').innerText = hebrewDateStr;
-            } catch(e) {}
         }
         setInterval(updateClock, 1000); updateClock();
+
+        // שאיבת תאריך עברי מדויק מ-API
+        async function updateHebrewDate() {
+            const now = new Date();
+            try {
+                const res = await fetch(`https://www.hebcal.com/converter?cfg=json&gy=${now.getFullYear()}&gm=${now.getMonth()+1}&gd=${now.getDate()}&g2h=1`);
+                const data = await res.json();
+                // מנקה את סימני הניקוד כדי שייראה חלק ויפה
+                const cleanHebrew = data.hebrew.replace(/[\u0591-\u05C7]/g, '');
+                document.getElementById('hebrew-date').innerText = cleanHebrew;
+            } catch(e) {}
+        }
+        updateHebrewDate();
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('active'); }
         function showSection(sectionId, element) {
             document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
             document.getElementById(sectionId).classList.add('active');
-            document.querySelectorAll('.sidebar a').forEach(link => link.classList.remove('active-link'));
-            if (element) element.classList.add('active-link');
+            if (element) {
+                document.querySelectorAll('.sidebar a').forEach(link => link.classList.remove('active-link'));
+                element.classList.add('active-link');
+            }
             if(window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('active');
         }
         const quotes = ["שיוויתי ה' לנגדי תמיד", "והעיקר לא לפחד כלל", "מחשבה מייצרת מציאות", "אשר יגעת ומצאת תאמין"];
@@ -258,6 +294,9 @@
         const swalConfig = { background: '#1e1e24', color: '#e0e0e0', confirmButtonColor: '#ffd700', cancelButtonColor: '#e74c3c', confirmButtonText: 'שמור', cancelButtonText: 'ביטול' };
 
         provider.addScope('https://www.googleapis.com/auth/calendar.events.readonly');
+        
+        // השורה שנוספה - מכריחה את גוגל להקפיץ תמיד את חלון האישורים
+        provider.setCustomParameters({ prompt: 'consent' });
 
         document.getElementById("btn-login").addEventListener("click", () => {
             signInWithPopup(auth, provider).then((result) => {
@@ -266,26 +305,35 @@
             }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה', text: error.message}));
         });
 
-        document.getElementById("btn-logout").addEventListener("click", () => {
-            Swal.fire({...swalConfig, title: 'להתנתק?', showCancelButton: true}).then((result) => {
+        // טיפול בהתנתקות משני הכפתורים (בסרגל העליון ובתפריט הצד)
+        const handleLogout = () => {
+            Swal.fire({...swalConfig, title: 'להתנתק מהמערכת?', showCancelButton: true}).then((result) => {
                 if (result.isConfirmed) { sessionStorage.removeItem('googleAccessToken'); signOut(auth); }
             });
-        });
+        };
+        document.getElementById("btn-logout-nav").addEventListener("click", handleLogout);
+        document.getElementById("btn-logout-sidebar").addEventListener("click", handleLogout);
 
         // פונקציה לטעינה מחודשת של כל הנתונים ללא רענון עמוד
         window.refreshData = function() {
             loadCollection('goals', 'goals-list', (d, i) => `<span><input type="checkbox" style="accent-color: var(--accent-gold); transform: scale(1.2); margin-left: 10px;"> ${d.title}</span> <i class="fas fa-trash icon-btn delete-icon" onclick="deleteItem('goals', '${i}')"></i>`);
             
-            // תצוגת הקורס המשודרגת
+            // תצוגת הקורסים החדשה - קובייה לכל קורס שלחיצה עליה מעבירה למסך הקורס
             loadCollection('courses', 'courses-list', (d, i) => `
-                <div style="flex-grow: 1; cursor: pointer; padding: 5px;" onclick="openCourse('${i}', '${d.name}')">
-                    <strong style="font-size:1.25rem; color: var(--accent-gold);">${d.name}</strong><br>
-                    <small style="color:var(--text-muted); display:block; margin-top:4px;"><i class="fas fa-video"></i> שיעור קרוב: ${d.nextClass || "לא הוזן"}</small>
-                    <small style="color:var(--danger); display:block; margin-top:2px;"><i class="fas fa-exclamation-circle"></i> משימה קרובה: ${d.nextTask || "לא הוזן"}</small>
-                </div> 
-                <div class="actions-wrapper">
-                    <i class="fas fa-book-open icon-btn edit-icon" onclick="openCourse('${i}', '${d.name}')" title="פתח מחברת קורס" style="font-size: 1.2rem;"></i>
-                    <i class="fas fa-trash icon-btn delete-icon" onclick="deleteItem('courses', '${i}')" title="מחק קורס"></i>
+                <div style="flex-grow: 1; cursor: pointer; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 15px; border-right: 3px solid var(--accent-gold); display: flex; justify-content: space-between; align-items: center;" onclick="openCourseScreen('${i}', '${d.name}', '${d.nextClass || ''}', '${d.nextTask || ''}')">
+                    <div>
+                        <strong style="font-size:1.4rem; color: var(--accent-gold);">${d.name}</strong><br>
+                        <div style="margin-top: 8px;">
+                            <small style="color:var(--text-light); display:block; margin-bottom: 5px;"><i class="fas fa-video" style="color: var(--accent-gold);"></i> שיעור קרוב: ${d.nextClass || "לא הוזן"}</small>
+                            <small style="color:var(--text-light); display:block;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i> משימה קרובה: ${d.nextTask || "לא הוזן"}</small>
+                        </div>
+                    </div>
+                    <div>
+                        <i class="fas fa-chevron-left" style="color: var(--text-muted); font-size: 1.5rem; margin-left: 15px;"></i>
+                    </div>
+                </div>
+                <div style="text-align: left; margin-top: -10px; margin-bottom: 20px;">
+                    <span style="font-size: 0.8rem; color: var(--danger); cursor: pointer; text-decoration: underline;" onclick="deleteItem('courses', '${i}')">מחק קורס</span>
                 </div>
             `);
             
@@ -307,27 +355,49 @@
             }
         });
 
-        // --- פתיחת מחברת קורס (סיכומים) ---
-        window.openCourse = async function(courseId, courseName) {
-            // שולף את הסיכומים הקיימים אם יש
-            const docRef = doc(db, "courses", courseId);
-            const docSnap = await getDoc(docRef);
-            const currentNotes = (docSnap.exists() && docSnap.data().notes) ? docSnap.data().notes : "";
+        // --- ניהול מסך קורס אישי ---
+        let currentCourseId = null;
 
-            const { value: text } = await Swal.fire({
+        window.openCourseScreen = async function(id, name, nextClass, nextTask) {
+            currentCourseId = id;
+            document.getElementById('current-course-title').innerText = name;
+            document.getElementById('cv-next-class').innerText = nextClass || 'לא הוזן';
+            document.getElementById('cv-next-task').innerText = nextTask || 'לא הוזן';
+
+            // שולף את הסיכומים הקיימים אם יש
+            const docSnap = await getDoc(doc(db, "courses", id));
+            document.getElementById('cv-notes').value = (docSnap.exists() && docSnap.data().notes) ? docSnap.data().notes : "";
+
+            // מחליף את המסך למסך הקורס
+            showSection('course-view');
+        };
+
+        window.saveCourseNotes = async function() {
+            if(!currentCourseId) return;
+            const notes = document.getElementById('cv-notes').value;
+            await setDoc(doc(db, "courses", currentCourseId), { notes: notes }, { merge: true });
+            Swal.fire({...swalConfig, title: 'הסיכומים נשמרו בהצלחה!', icon: 'success', timer: 1500, showConfirmButton: false});
+        };
+
+        window.editCourseDetails = async function() {
+            if(!currentCourseId) return;
+            const currentClass = document.getElementById('cv-next-class').innerText;
+            const currentTask = document.getElementById('cv-next-task').innerText;
+
+            const { value: v } = await Swal.fire({
                 ...swalConfig,
-                title: `מחברת קורס: ${courseName}`,
-                html: `<textarea id="course-notes" style="width: 100%; height: 250px; background: #25252d; color: #e0e0e0; border: 1px solid #444; border-radius: 8px; padding: 15px; direction: rtl; resize: vertical; font-family: inherit; font-size: 1rem; box-sizing: border-box;" placeholder="הכנס כאן סיכומים, לינקים לזום, תזכורות למבחן...">${currentNotes}</textarea>`,
+                title: 'עריכת משימה ושיעור',
+                html: `<input id="swal-edit-c1" class="swal2-input" placeholder="שיעור קרוב (לדוגמה: מחר ב-18:00)" value="${currentClass !== 'לא הוזן' ? currentClass : ''}">
+                       <input id="swal-edit-c2" class="swal2-input" placeholder="משימה קרובה (לדוגמה: ממן 11)" value="${currentTask !== 'לא הוזן' ? currentTask : ''}">`,
                 showCancelButton: true,
-                confirmButtonText: 'שמור סיכום',
-                cancelButtonText: 'סגור',
-                width: '600px',
-                preConfirm: () => { return document.getElementById('course-notes').value; }
+                preConfirm: () => [document.getElementById('swal-edit-c1').value, document.getElementById('swal-edit-c2').value]
             });
 
-            if (text !== undefined) {
-                await setDoc(docRef, { notes: text }, { merge: true });
-                Swal.fire({...swalConfig, title: 'הסיכום נשמר!', icon: 'success', timer: 1500, showConfirmButton: false});
+            if(v) {
+                await setDoc(doc(db, "courses", currentCourseId), { nextClass: v[0], nextTask: v[1] }, { merge: true });
+                document.getElementById('cv-next-class').innerText = v[0] || 'לא הוזן';
+                document.getElementById('cv-next-task').innerText = v[1] || 'לא הוזן';
+                window.refreshData(); // מרענן כדי שהמסך הראשי יתעדכן גם
             }
         };
 
@@ -351,9 +421,8 @@
             try {
                 const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${futureDate.toISOString()}&singleEvents=true&orderBy=startTime`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) {
-                    if (response.status === 401) {
-                        sessionStorage.removeItem('googleAccessToken');
-                        weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger);">החיבור ליומן פג. אנא התחבר מחדש.</p>';
+                    if (response.status === 401 || response.status === 403) {
+                        weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger);">החיבור ליומן נכשל. לחץ על כפתור ההתנתקות והתחבר שוב.</p>';
                         return;
                     }
                     throw new Error('שגיאה בשליפת יומן');
@@ -492,7 +561,6 @@
         
         async function askTwoInputs(t, p1, p2) { const { value: v } = await Swal.fire({ ...swalConfig, title: t, html: `<input id="swal-in1" class="swal2-input" placeholder="${p1}"><input id="swal-in2" class="swal2-input" placeholder="${p2}">`, showCancelButton: true, preConfirm: () => [document.getElementById('swal-in1').value, document.getElementById('swal-in2').value] }); return v; }
         
-        // טופס קורס משודרג (3 שדות)
         document.getElementById('btn-add-course').onclick = async () => { 
             const { value: v } = await Swal.fire({ 
                 ...swalConfig, 
