@@ -147,7 +147,7 @@
                         <div id="weekly-events-container">
                             <p style="text-align:center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> טוען אירועים מהיומן...</p>
                         </div>
-                        <button class="action-btn" style="margin-top: 15px;" onclick="fetchCalendarEvents()"><i class="fas fa-sync"></i> סנכרון יומן</button>
+                        <button class="action-btn" style="margin-top: 15px;" onclick="fetchCalendarEvents()"><i class="fas fa-sync"></i> סנכרון יומן ידני</button>
                     </div>
                 </div>
             </div>
@@ -246,7 +246,6 @@
         }
         setInterval(updateClock, 1000); updateClock();
 
-        // שאיבת תאריך עברי מדויק מ-API
         async function updateHebrewDate() {
             const now = new Date();
             try {
@@ -292,7 +291,6 @@
         const db = getFirestore(app);
         const swalConfig = { background: '#1e1e24', color: '#e0e0e0', confirmButtonColor: '#ffd700', cancelButtonColor: '#e74c3c', confirmButtonText: 'שמור', cancelButtonText: 'ביטול' };
 
-        // התחברות ראשית למערכת (שומרת מפתח ב-localStorage לזיכרון תמידי)
         document.getElementById("btn-login").addEventListener("click", () => {
             signInWithPopup(auth, provider).then((result) => {
                 const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -300,10 +298,10 @@
                     localStorage.setItem('googleAccessToken', credential.accessToken);
                 }
                 window.location.reload();
-            }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה', text: error.message}));
+            }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה בהתחברות', text: error.message}));
         });
 
-        // חיבור ספציפי ליומן (נשק יום הדין)
+        // חיבור ספציפי ליומן שמבקש אישור בכל פעם
         window.connectCalendarSpecific = function() {
             const calProvider = new GoogleAuthProvider();
             calProvider.addScope('https://www.googleapis.com/auth/calendar.events.readonly');
@@ -313,10 +311,10 @@
                 const credential = GoogleAuthProvider.credentialFromResult(result);
                 if(credential && credential.accessToken) {
                     localStorage.setItem('googleAccessToken', credential.accessToken);
-                    Swal.fire({...swalConfig, icon: 'success', title: 'היומן חובר בהצלחה!', timer: 1500, showConfirmButton: false});
+                    Swal.fire({...swalConfig, icon: 'success', title: 'היומן חובר בהצלחה!', text: 'מתחיל לסנכרן נתונים...', timer: 2000, showConfirmButton: false});
                     window.fetchCalendarEvents();
                 }
-            }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה', text: error.message}));
+            }).catch(error => Swal.fire({...swalConfig, icon: 'error', title: 'שגיאה בחיבור ליומן', text: error.message}));
         };
 
         const handleLogout = () => {
@@ -403,17 +401,19 @@
             }
         };
 
-        // יומן גוגל
+        // ==========================================
+        //  מנגנון הרנטגן החדש ליומן גוגל
+        // ==========================================
         const bigEventKeywords = ['טיסה', 'חופשה', 'מבחן', 'טקס', 'חג', 'גאורגיה', 'אילת', 'חול', 'חו"ל'];
         let allCalendarEvents = []; 
 
         window.fetchCalendarEvents = async function() {
-            const token = localStorage.getItem('googleAccessToken'); // השתנה ל-localStorage
+            const token = localStorage.getItem('googleAccessToken');
             const weeklyContainer = document.getElementById('weekly-events-container');
             const bigEventsContainer = document.getElementById('big-events-container');
             
             if (!token) { 
-                weeklyContainer.innerHTML = '<p style="text-align:center; margin-bottom: 20px;">המערכת צריכה אישור כדי לקרוא את היומן שלך.</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל</button>'; 
+                weeklyContainer.innerHTML = '<p style="text-align:center; margin-bottom: 20px;">חסר מפתח התחברות ליומן.</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל עכשיו</button>'; 
                 return; 
             }
 
@@ -421,17 +421,40 @@
             const futureDate = new Date(); futureDate.setMonth(now.getMonth() + 2);
             
             try {
+                // קריאה לגוגל
                 const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${futureDate.toISOString()}&singleEvents=true&orderBy=startTime`, { headers: { 'Authorization': `Bearer ${token}` } });
+                
+                // ---- התחלת הרנטגן (בדיקת שגיאות מדויקת) ----
                 if (!response.ok) {
-                    if (response.status === 401 || response.status === 403) {
-                        weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger); margin-bottom: 20px;">פג תוקף החיבור ליומן (מטעמי אבטחה של גוגל).</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> התחבר ליומן מחדש</button>';
-                        return;
-                    }
-                    throw new Error('שגיאה בשליפת יומן');
+                    const errorData = await response.json();
+                    let errorMsg = errorData.error ? errorData.error.message : 'שגיאה לא ידועה';
+                    
+                    Swal.fire({
+                        ...swalConfig, 
+                        icon: 'error', 
+                        title: `שגיאה ${response.status} מגוגל`, 
+                        html: `<p>קוד שגיאה מדויק: <b>${errorMsg}</b></p><p style="font-size:0.9rem; color:var(--text-muted)">נסה ללחוץ על "חבר יומן גוגל עכשיו" כדי לאמת מחדש.</p>`,
+                    });
+                    
+                    weeklyContainer.innerHTML = '<button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל עכשיו</button>';
+                    return;
                 }
+
+                // ---- אם הכל עבד, מציג דיווח כמה אירועים נמצאו ----
                 const events = (await response.json()).items;
                 allCalendarEvents = events || [];
+                
+                // הקפצת חלון שמדווח בדיוק מה הגיע מהיומן
+                Swal.fire({
+                    ...swalConfig, 
+                    icon: 'success', 
+                    title: 'הסנכרון בוצע!', 
+                    text: `גוגל החזיר ${allCalendarEvents.length} אירועים בחודשיים הקרובים.`,
+                    timer: 3000, 
+                    showConfirmButton: false
+                });
 
+                // ציור האירועים במסך (כמו קודם)
                 const bigEvents = allCalendarEvents.filter(e => {
                     const title = (e.summary || '').toLowerCase();
                     return bigEventKeywords.some(keyword => title.includes(keyword));
@@ -444,7 +467,6 @@
                         const d = new Date(e.start.dateTime || e.start.date);
                         const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
                         const icon = e.summary.includes('טיסה') || e.summary.includes('חופשה') || e.summary.includes('גאורגיה') ? 'fa-plane-departure' : 'fa-star';
-                        
                         bigEventsContainer.innerHTML += `
                             <div class="card" style="text-align: center; justify-content: center; padding: 25px; border-color: var(--accent-gold);">
                                 <i class="fas ${icon}" style="font-size: 3rem; color: var(--accent-gold); margin-bottom: 15px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.3));"></i>
@@ -477,7 +499,7 @@
                 buildMonthlyCalendar(now.getFullYear(), now.getMonth(), allCalendarEvents);
 
             } catch (error) { 
-                weeklyContainer.innerHTML = '<p style="text-align:center; color: var(--danger); margin-bottom: 20px;">שגיאה בטעינת היומן. נסה להתחבר מחדש.</p><button class="action-btn" onclick="connectCalendarSpecific()" style="background: var(--accent-gold); color: var(--bg-dark);"><i class="fab fa-google"></i> חבר יומן גוגל</button>'; 
+                Swal.fire({...swalConfig, icon: 'error', title: 'שגיאת רשת', text: error.message});
             }
         };
 
@@ -573,3 +595,4 @@
     </script>
 </body>
 </html>
+ 
